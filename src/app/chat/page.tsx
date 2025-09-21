@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { ChevronLeft, ChevronRight, Info, Plus } from "lucide-react";
@@ -362,7 +363,10 @@ export default function Chat() {
         {/* Left: Chat */}
         <div className="flex flex-col gap-4 h-full">
           <div className="flex items-center justify-between">
-            <div className="text-xl font-medium">Agent Chat</div>
+            <div className="flex items-center gap-2">
+              <div className="text-xl font-medium">Agent Chat</div>
+              <ThemeToggle />
+            </div>
             <div className="flex items-center gap-2">
               <Button
                 variant={isTeachingMode ? "default" : "outline"}
@@ -415,7 +419,7 @@ export default function Chat() {
           </div>
 
           {isTeachingMode && (
-            <div className="border rounded-md p-4 bg-blue-50">
+            <div className="border rounded-md p-4 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-900/40">
               <div className="font-medium mb-3">Teaching Mode</div>
               <div className="space-y-3">
                 <div>
@@ -432,7 +436,7 @@ export default function Chat() {
             </div>
           )}
 
-          <div className="flex-1 border rounded-md p-4 space-y-3 overflow-y-auto">
+          <div className="flex-1 border rounded-md p-4 space-y-3 overflow-y-auto dark:border-neutral-800">
             {messages.map((m) =>
               m.role === "system" ? null : (
                 <div key={m.id} className="text-sm relative group">
@@ -611,7 +615,7 @@ export default function Chat() {
               }
               setInput("");
             }}
-            className="flex gap-2 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/75 border-t pt-3"
+            className="flex gap-2 bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75 border-t pt-3"
           >
             <Input
               value={input}
@@ -756,7 +760,7 @@ export default function Chat() {
                 ) : null}
                 {prompt ? (
                   <div className="min-h-0 flex-1">
-                    <pre className="text-xs whitespace-pre-wrap break-words text-neutral-700 bg-neutral-50 border border-neutral-200 rounded p-2 h-full overflow-y-auto">
+                    <pre className="text-xs whitespace-pre-wrap break-words text-neutral-700 bg-neutral-50 border border-neutral-200 rounded p-2 h-full overflow-y-auto dark:text-neutral-200 dark:bg-neutral-900 dark:border-neutral-800">
                       {prompt}
                     </pre>
                   </div>
@@ -865,7 +869,7 @@ export default function Chat() {
                           </Button>
                         </div>
                         {showSampleJson && (
-                          <pre className="mt-2 p-2 bg-neutral-100 rounded border whitespace-pre-wrap break-words overflow-x-auto">
+                          <pre className="mt-2 p-2 bg-neutral-100 rounded border whitespace-pre-wrap break-words overflow-x-auto dark:bg-neutral-900 dark:border-neutral-800 dark:text-neutral-200">
                             {JSON.stringify(
                               samples.samples[sampleIndex],
                               null,
@@ -904,6 +908,7 @@ export default function Chat() {
                               setOptStats(sj);
                               if (sj?.status === "completed") {
                                 try {
+                                  // Refresh prompt to show the newly saved instruction
                                   setIsLoadingPrompt(true);
                                   const p = await fetch("/api/prompt", {
                                     cache: "no-store",
@@ -915,6 +920,32 @@ export default function Chat() {
                                 } finally {
                                   setIsLoadingPrompt(false);
                                 }
+
+                                // Reset to show the current prompt version
+                                setActiveVersionId(null);
+                                setIsCurrentPromptShown(true);
+                                setVersionIndex(0);
+
+                                // Refresh versions list so the newly created version appears
+                                try {
+                                  setIsLoadingVersions(true);
+                                  const vres = await fetch("/api/versions", {
+                                    cache: "no-store",
+                                  });
+                                  if (vres.ok) {
+                                    const v = (await vres.json()) as {
+                                      versions: {
+                                        id: string;
+                                        timestamp?: string;
+                                        bestScore?: number | null;
+                                      }[];
+                                    };
+                                    setVersions(v);
+                                  }
+                                } finally {
+                                  setIsLoadingVersions(false);
+                                }
+
                                 return true;
                               }
                             } catch {}
@@ -1146,24 +1177,25 @@ export default function Chat() {
                         <Info className="h-3.5 w-3.5 text-neutral-500" />
                       </Button>
                     </div>
-                    <select
-                      className="w-full border rounded-md h-9 px-2 text-sm bg-white"
+                    <Select
                       value={optimizerSettings.auto}
-                      aria-label="Auto mode"
-                      onChange={(e) =>
+                      onValueChange={(value) =>
                         setOptimizerSettings((s) => ({
                           ...s,
-                          auto:
-                            (e.target.value as OptimizerSettings["auto"]) ||
-                            "off",
+                          auto: (value as OptimizerSettings["auto"]) || "off",
                         }))
                       }
                     >
-                      <option value="off">off</option>
-                      <option value="light">light</option>
-                      <option value="medium">medium</option>
-                      <option value="heavy">heavy</option>
-                    </select>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="off" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="off">off</SelectItem>
+                        <SelectItem value="light">light</SelectItem>
+                        <SelectItem value="medium">medium</SelectItem>
+                        <SelectItem value="heavy">heavy</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <div className="mt-1 text-[11px] text-neutral-500">
                       Choose overall search intensity.
                     </div>
@@ -1201,23 +1233,27 @@ export default function Chat() {
                         <Info className="h-3.5 w-3.5 text-neutral-500" />
                       </Button>
                     </div>
-                    <select
-                      className="w-full border rounded-md h-9 px-2 text-sm bg-white"
+                    <Select
                       value={optimizerSettings.candidateSelectionStrategy}
-                      aria-label="Candidate selection strategy"
-                      onChange={(e) =>
+                      onValueChange={(value) =>
                         setOptimizerSettings((s) => ({
                           ...s,
                           candidateSelectionStrategy:
-                            (e.target
-                              .value as OptimizerSettings["candidateSelectionStrategy"]) ||
+                            (value as OptimizerSettings["candidateSelectionStrategy"]) ||
                             "pareto",
                         }))
                       }
                     >
-                      <option value="pareto">pareto</option>
-                      <option value="current_best">current_best</option>
-                    </select>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="pareto" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pareto">pareto</SelectItem>
+                        <SelectItem value="current_best">
+                          current_best
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
                     <div className="mt-1 text-[11px] text-neutral-500">
                       Controls exploration vs. exploitation.
                     </div>
@@ -1333,11 +1369,11 @@ export default function Chat() {
                   </div>
                 </div>
 
-                <div className="mt-4 text-sm text-neutral-700">
+                <div className="mt-4 text-sm text-neutral-700 dark:text-neutral-200">
                   Previous Optimization
                 </div>
 
-                <div className="mt-2 text-xs text-neutral-700 bg-neutral-50 border border-neutral-200 rounded p-2">
+                <div className="mt-2 text-xs text-neutral-700 bg-neutral-50 border border-neutral-200 rounded p-2 dark:text-neutral-200 dark:bg-neutral-900 dark:border-neutral-800">
                   {optStats && optStats.status !== "idle" ? (
                     <div className="space-y-1">
                       {optStats.status === "running" ? (

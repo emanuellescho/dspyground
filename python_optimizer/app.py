@@ -204,18 +204,18 @@ def optimize() -> Any:
     enable_disk_cache = payload.get("enableDiskCache")
     enable_memory_cache = payload.get("enableMemoryCache")
 
-    # Reconfigure LM/cache if overrides are provided
-    global MAIN_MODEL, REFLECTION_MODEL, REFLECTION_LM
+    # Resolve per-request LMs without reconfiguring global settings
+    local_lm = None
     if isinstance(main_model, str) and main_model.strip():
-        MAIN_MODEL = main_model.strip()
-        dspy.configure(lm=dspy.LM(
-            model=MAIN_MODEL,
+        local_lm = dspy.LM(
+            model=main_model.strip(),
             api_key=API_KEY,
-            base_url="https://ai-gateway.vercel.sh/v1"))
+            base_url="https://ai-gateway.vercel.sh/v1",
+        )
+    local_reflection_lm = REFLECTION_LM
     if isinstance(reflection_model, str) and reflection_model.strip():
-        REFLECTION_MODEL = reflection_model.strip()
-        REFLECTION_LM = dspy.LM(
-            model=REFLECTION_MODEL,
+        local_reflection_lm = dspy.LM(
+            model=reflection_model.strip(),
             api_key=API_KEY,
             base_url="https://ai-gateway.vercel.sh/v1",
         )
@@ -251,13 +251,20 @@ def optimize() -> Any:
     start = time.time()
     gepa = GEPA(
         metric=metric,
-        reflection_lm=REFLECTION_LM,
+        reflection_lm=local_reflection_lm,
         track_stats=True,
         max_metric_calls=max_metric_calls,
         add_format_failure_as_feedback=True,
         # Map Basic settings if provided
         auto=(
-            auto_mode if auto_mode in (None, "light", "medium", "heavy") else None
+            auto_mode
+            if auto_mode in (
+                None,
+                "light",
+                "medium",
+                "heavy",
+            )
+            else None
         ),
         candidate_selection_strategy=(
             candidate_selection
@@ -278,11 +285,19 @@ def optimize() -> Any:
             else None
         ),
     )
-    compiled = gepa.compile(
-        program,
-        trainset=trainset,
-        valset=trainset,
-    )
+    if local_lm is not None:
+        with dspy.settings.context(lm=local_lm):
+            compiled = gepa.compile(
+                program,
+                trainset=trainset,
+                valset=trainset,
+            )
+    else:
+        compiled = gepa.compile(
+            program,
+            trainset=trainset,
+            valset=trainset,
+        )
 
     # Extract results
     best_prog = getattr(compiled, "detailed_results", None)
