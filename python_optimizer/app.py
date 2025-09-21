@@ -327,21 +327,54 @@ def optimize() -> Any:
                 self._re_skip = re.compile(
                     r"New subsample score is not better, skipping"
                 )
+                # Start of prompt block (reflection proposal)
+                self._re_prompt_start = re.compile(
+                    r"Proposed new text for self:\s*"
+                )
+                self._collecting_prompt = False
+                self._prompt_lines: list[str] = []
 
             def emit(self, record: logging.LogRecord) -> None:
                 try:
                     msg = record.getMessage()
                     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                     obj: dict[str, Any] | None = None
+
+                    # Helper to flush any collected prompt block
+                    def _flush_prompt_if_any() -> None:
+                        if self._collecting_prompt and self._prompt_lines:
+                            prompt_text = "\n".join(self._prompt_lines).strip()
+                            try:
+                                with self.file_path.open(
+                                    "a", encoding="utf-8"
+                                ) as f:
+                                    f.write(
+                                        json.dumps(
+                                            {
+                                                "type": "prompt",
+                                                "timestamp": now,
+                                                "iteration": self.iteration,
+                                                "prompt": prompt_text,
+                                            }
+                                        )
+                                        + "\n"
+                                    )
+                            except Exception:
+                                pass
+                        self._collecting_prompt = False
+                        self._prompt_lines = []
+
                     m_iter = self._re_iter.search(msg)
                     if m_iter:
                         self.iteration = int(m_iter.group(1))
                         selected = float(m_iter.group(2))
                         cond = (
-                            self.best_so_far is None or selected > self.best_so_far
+                            self.best_so_far is None
+                            or selected > self.best_so_far
                         )
                         if cond:
                             self.best_so_far = selected
+                        _flush_prompt_if_any()
                         obj = {
                             "type": "iteration",
                             "timestamp": now,
@@ -353,6 +386,7 @@ def optimize() -> Any:
                         m_avg = self._re_avg.search(msg)
                         if m_avg:
                             avg = float(m_avg.group(1))
+                            _flush_prompt_if_any()
                             obj = {
                                 "type": "metric",
                                 "timestamp": now,
@@ -361,6 +395,7 @@ def optimize() -> Any:
                                 "bestSoFar": self.best_so_far,
                             }
                         elif self._re_skip.search(msg):
+                            _flush_prompt_if_any()
                             obj = {
                                 "type": "note",
                                 "timestamp": now,
@@ -371,6 +406,17 @@ def optimize() -> Any:
                                 ),
                                 "bestSoFar": self.best_so_far,
                             }
+                        else:
+                            # Prompt capture handling
+                            m_prompt = self._re_prompt_start.search(msg)
+                            if m_prompt:
+                                after = msg[m_prompt.end():].strip()
+                                self._collecting_prompt = True
+                                self._prompt_lines = []
+                                if after:
+                                    self._prompt_lines.append(after)
+                            elif self._collecting_prompt:
+                                self._prompt_lines.append(msg)
                     if obj is not None:
                         with self.file_path.open("a", encoding="utf-8") as f:
                             f.write(json.dumps(obj) + "\n")

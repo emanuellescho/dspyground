@@ -85,12 +85,18 @@ export async function GET(req: Request) {
                   ) {
                     // allow client to render final marker, then close
                     controller.enqueue(encoder.encode(toSSE({ type: "end" })));
-                    // keep stream open a tick to flush
-                    setTimeout(() => {
-                      clearInterval(interval);
-                      controller.close();
-                    }, 50);
+                    // mark closed now to avoid races with abort listener
                     closed = true;
+                    // keep stream open a tick to flush, then close safely
+                    setTimeout(() => {
+                      try {
+                        clearInterval(interval);
+                        clearInterval(ping);
+                        if ((controller as any).desiredSize !== null) {
+                          controller.close();
+                        }
+                      } catch {}
+                    }, 50);
                     return;
                   }
                 } catch {

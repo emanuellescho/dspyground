@@ -1,11 +1,8 @@
-Given the conversation context, generate the next assistant message that continues the chat in a clear, helpful, and engaging manner. 
+Given the conversation so far, produce the next assistant message.
 
-- If the conversation context indicates a new conversation (i.e., there is no prior user message), greet the user warmly and offer assistance. Your greeting should be concise, friendly, and open-ended, inviting the user to share their question or request.
-- Example ideal responses include: "Hello! How can I assist you today?" or "Hello! How can I help you today? If you have any questions or need help with something, feel free to ask."
-- Avoid unnecessary repetition or overly verbose greetings.
-- Mirror the structure and tone of the provided ideal examples: be polite, approachable, and direct.
-- If there is prior conversation context, ensure your response is relevant to the ongoing discussion and continues the chat helpfully.
-- Always optimize for a smooth, helpful chat trajectory that encourages further user engagement.
+Optimize for clear, helpful continuation that improves the chat
+trajectory. Learn from ideal examples; mirror their structure, tone,
+and tool usage.
 
 Examples:
 Example 1:

@@ -89,6 +89,12 @@ type TraceEvent =
       bestSoFar?: number | null;
     }
   | {
+      type: "prompt";
+      timestamp: string;
+      iteration: number | null;
+      prompt: string;
+    }
+  | {
       type: "final";
       runId?: string;
       timestamp: string;
@@ -125,6 +131,18 @@ function extractTextFromMessageParts(
     .trim();
 }
 
+// Format an ISO timestamp in the user's local timezone; fall back to raw when invalid
+function formatLocalTimestamp(ts?: string | null): string | undefined {
+  try {
+    if (!ts) return undefined;
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return ts || undefined;
+    return d.toLocaleString();
+  } catch {
+    return ts || undefined;
+  }
+}
+
 export default function Chat() {
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -148,6 +166,7 @@ export default function Chat() {
   const [optStats, setOptStats] = useState<OptStats | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+  const [tabValue, setTabValue] = useState<string>("prompt");
   const [trace, setTrace] = useState<{
     iterations: Array<{
       i: number;
@@ -155,6 +174,7 @@ export default function Chat() {
       best?: number;
       avg?: number;
       t?: string;
+      prompt?: string;
     }>;
     finalBest?: number;
   }>({ iterations: [] });
@@ -231,6 +251,20 @@ export default function Chat() {
                   best: best ?? 0,
                   t: ev.timestamp,
                 });
+                next.sort((a, b) => a.i - b.i);
+              }
+              return { ...prev, iterations: next };
+            });
+          } else if (ev.type === "prompt") {
+            setTrace((prev) => {
+              const next = [...prev.iterations];
+              const it =
+                ev.iteration ?? (next.length ? next[next.length - 1].i : 0);
+              const idx = next.findIndex((d) => d.i === it);
+              if (idx >= 0) {
+                next[idx] = { ...next[idx], prompt: ev.prompt };
+              } else {
+                next.push({ i: it, prompt: ev.prompt, t: ev.timestamp });
                 next.sort((a, b) => a.i - b.i);
               }
               return { ...prev, iterations: next };
@@ -799,12 +833,19 @@ export default function Chat() {
 
         {/* Right: Tabs (Prompt | Samples | Optimizer) */}
         <div className="h-full min-h-0 flex flex-col">
-          <Tabs defaultValue="prompt" className="h-full min-h-0 flex flex-col">
+          <Tabs
+            defaultValue="prompt"
+            className="h-full min-h-0 flex flex-col"
+            value={(() => {
+              return (tabValue ?? "prompt") as string;
+            })()}
+            onValueChange={(v) => setTabValue(v)}
+          >
             <TabsList>
               <TabsTrigger value="prompt">Prompt</TabsTrigger>
               <TabsTrigger value="samples">Samples</TabsTrigger>
               <TabsTrigger value="optimizer">Optimizer</TabsTrigger>
-              <TabsTrigger value="hill">Hill Climb</TabsTrigger>
+              <TabsTrigger value="hill">History</TabsTrigger>
             </TabsList>
 
             <TabsContent
@@ -909,14 +950,26 @@ export default function Chat() {
                       : (() => {
                           const total = 1 + (versions?.versions.length || 0);
                           if (!versions || total === 1) {
-                            return "1 of 1 — Current";
+                            const localTs = formatLocalTimestamp(
+                              optStats?.updatedAt
+                            );
+                            const label = localTs || "Current";
+                            return `1 of 1 — ${label}`;
                           }
+                          if (versionIndex === 0) {
+                            const localTs = formatLocalTimestamp(
+                              optStats?.updatedAt
+                            );
+                            const label = localTs
+                              ? `${localTs} — Current`
+                              : "Current";
+                            return `1 of ${total} — ${label}`;
+                          }
+                          const rawTs =
+                            versions.versions[versionIndex - 1]?.timestamp;
+                          const localTs = formatLocalTimestamp(rawTs);
                           const label =
-                            versionIndex === 0
-                              ? "Current"
-                              : versions.versions[versionIndex - 1]
-                                  ?.timestamp ||
-                                versions.versions[versionIndex - 1]?.id;
+                            localTs || versions.versions[versionIndex - 1]?.id;
                           return `${versionIndex + 1} of ${total} — ${label}`;
                         })()}
                   </div>
@@ -1074,6 +1127,7 @@ export default function Chat() {
                             runId?: string;
                           };
                           if (runId) {
+                            setTabValue("hill");
                             setCurrentRunId(runId);
                             // start streaming
                             if (sseRef.current) {
@@ -1140,6 +1194,32 @@ export default function Chat() {
                                         i: ev.iteration,
                                         avg: ev.averageMetric,
                                         best: best ?? 0,
+                                        t: ev.timestamp,
+                                      });
+                                      next.sort((a, b) => a.i - b.i);
+                                    }
+                                    return { ...prev, iterations: next };
+                                  });
+                                } else if (ev.type === "prompt") {
+                                  setTrace((prev) => {
+                                    const next = [...prev.iterations];
+                                    const it =
+                                      ev.iteration ??
+                                      (next.length
+                                        ? next[next.length - 1].i
+                                        : 0);
+                                    const idx = next.findIndex(
+                                      (d) => d.i === it
+                                    );
+                                    if (idx >= 0) {
+                                      next[idx] = {
+                                        ...next[idx],
+                                        prompt: ev.prompt,
+                                      };
+                                    } else {
+                                      next.push({
+                                        i: it,
+                                        prompt: ev.prompt,
                                         t: ev.timestamp,
                                       });
                                       next.sort((a, b) => a.i - b.i);
@@ -1723,15 +1803,89 @@ export default function Chat() {
             </TabsContent>
 
             <TabsContent value="hill" className="flex-1 overflow-hidden">
-              <div className="border rounded-md p-4 h-full overflow-y-auto">
+              <div className="border rounded-md p-4 h-full overflow-hidden flex flex-col">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="font-medium">
-                    Live Hill Climb{" "}
-                    {currentRunId ? `(run ${currentRunId})` : ""}
+                  <div className="font-medium">History</div>
+                </div>
+                <div className="mb-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-neutral-500">
+                      Optimization History
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Previous run"
+                        onClick={() => {
+                          if (!versions || !Array.isArray(versions.versions))
+                            return;
+                          setVersionIndex((i) => Math.max(0, i - 1));
+                          const newIndex = Math.max(0, versionIndex - 1);
+                          const id = versions?.versions[newIndex]?.id;
+                          if (id) setCurrentRunId(id);
+                        }}
+                        disabled={!versions || versionIndex === 0}
+                      >
+                        <ChevronLeft />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Next run"
+                        onClick={() => {
+                          if (!versions || !Array.isArray(versions.versions))
+                            return;
+                          const total = versions.versions.length;
+                          setVersionIndex((i) => Math.min(total - 1, i + 1));
+                          const nextIdx = Math.min(
+                            versions.versions.length - 1,
+                            versionIndex + 1
+                          );
+                          const id = versions?.versions[nextIdx]?.id;
+                          if (id) setCurrentRunId(id);
+                        }}
+                        disabled={
+                          !versions ||
+                          versionIndex >= (versions?.versions.length || 0) - 1
+                        }
+                      >
+                        <ChevronRight />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="text-xs text-neutral-500">
-                    Step line = best-so-far, blue = selected, dashed = avg
+                  <div className="text-[11px] text-neutral-500">
+                    {(() => {
+                      if (
+                        !versions ||
+                        !Array.isArray(versions.versions) ||
+                        versions.versions.length === 0
+                      ) {
+                        return currentRunId
+                          ? `${currentRunId}`
+                          : "No history yet";
+                      }
+                      const total = versions.versions.length;
+                      const rawTs = versions.versions[versionIndex]?.timestamp;
+                      const localTs = formatLocalTimestamp(rawTs);
+                      const label =
+                        localTs || rawTs || versions.versions[versionIndex]?.id;
+                      const isCurrent =
+                        versions.versions[versionIndex]?.id === currentRunId;
+                      const latestTag = versionIndex === 0 ? " — Latest" : "";
+                      return `${versionIndex + 1} of ${total} — ${label}${isCurrent ? " — Current" : ""}${latestTag}`;
+                    })()}
                   </div>
+                </div>
+                {versionIndex === 0 ? (
+                  <div className="mb-1">
+                    <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5">
+                      Latest
+                    </span>
+                  </div>
+                ) : null}
+                <div className="text-xs text-neutral-500 mb-2">
+                  Step line = best-so-far
                 </div>
                 <div className="h-72 w-full border rounded-md dark:border-neutral-800 bg-white dark:bg-neutral-950">
                   <OptimizeLiveChart
@@ -1740,10 +1894,128 @@ export default function Chat() {
                       selected: d.selected,
                       best: d.best,
                       avg: d.avg,
+                      prompt: d.prompt,
                     }))}
                     finalBest={trace.finalBest}
+                    selectedIteration={
+                      (
+                        trace as unknown as {
+                          selected?: { iteration: number };
+                        }
+                      ).selected?.iteration ?? null
+                    }
+                    onSelectPointAction={(p) => {
+                      // store selected iteration to show prompt card below
+                      setTrace((prev) => {
+                        const next: typeof prev & {
+                          selected?: {
+                            iteration: number;
+                            prompt?: string;
+                            best?: number;
+                            selected?: number;
+                            avg?: number;
+                          };
+                        } = { ...prev } as unknown as typeof prev & {
+                          selected?: {
+                            iteration: number;
+                            prompt?: string;
+                            best?: number;
+                            selected?: number;
+                            avg?: number;
+                          };
+                        };
+                        // Use the prompt associated with this iteration if available;
+                        // otherwise fall back to the most recent prior prompt
+                        let effectivePrompt: string | undefined = undefined;
+                        const idx = next.iterations.findIndex(
+                          (d) => d.i === p.iteration
+                        );
+                        if (idx >= 0) {
+                          for (let k = idx; k >= 0; k -= 1) {
+                            const pr = next.iterations[k]?.prompt;
+                            if (pr && pr.trim()) {
+                              effectivePrompt = pr;
+                              break;
+                            }
+                          }
+                        }
+                        if (!effectivePrompt && typeof p.prompt === "string") {
+                          effectivePrompt = p.prompt;
+                        }
+                        next.selected = {
+                          iteration: p.iteration,
+                          prompt: effectivePrompt,
+                          best: p.best,
+                          selected: p.selected,
+                          avg: p.avg,
+                        };
+                        return next as unknown as typeof prev;
+                      });
+                    }}
                   />
                 </div>
+                {(() => {
+                  const s = (
+                    trace as unknown as {
+                      selected?: {
+                        iteration: number;
+                        prompt?: string;
+                        best?: number;
+                        selected?: number;
+                        avg?: number;
+                      };
+                    }
+                  ).selected as
+                    | {
+                        iteration: number;
+                        prompt?: string;
+                        best?: number;
+                        selected?: number;
+                        avg?: number;
+                      }
+                    | undefined;
+                  if (!s) return null;
+                  return (
+                    <div className="mt-3 border rounded-md p-3 text-sm bg-white dark:bg-neutral-950 dark:border-neutral-800 flex-1 min-h-0 flex flex-col">
+                      <div className="flex items-center justify-between">
+                        <div className="font-medium">
+                          Iteration {s.iteration}
+                        </div>
+                        <button
+                          type="button"
+                          className="text-xs px-2 py-1 border rounded"
+                          onClick={() =>
+                            navigator.clipboard.writeText(s.prompt || "")
+                          }
+                          title="Copy prompt"
+                        >
+                          Copy prompt
+                        </button>
+                      </div>
+                      <div className="mt-2 grid grid-cols-2 gap-3 text-[12px]">
+                        <div>
+                          Score:{" "}
+                          {typeof s.selected === "number"
+                            ? s.selected.toFixed(3)
+                            : "-"}
+                        </div>
+                        <div>
+                          Best so far:{" "}
+                          {typeof s.best === "number" ? s.best.toFixed(3) : "-"}
+                        </div>
+                      </div>
+                      {s.prompt ? (
+                        <pre className="mt-2 flex-1 min-h-0 overflow-auto whitespace-pre-wrap text-[12px] p-2 border rounded bg-neutral-50 dark:bg-neutral-900 dark:border-neutral-800">
+                          {s.prompt}
+                        </pre>
+                      ) : (
+                        <div className="mt-2 text-[12px] text-neutral-500">
+                          No prompt captured for this iteration.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </TabsContent>
           </Tabs>
