@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
+import logging
 import os
+import re
 import time
+from pathlib import Path
 from typing import Any, Dict, List
 
 # Minimal DSPy/GEPA setup
@@ -10,6 +14,14 @@ from dspy.teleprompt.gepa import GEPA
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
+
+# Ensure library logs (dspy, tqdm-routed) are emitted at INFO
+# so our handler can capture
+logging.basicConfig(level=logging.INFO)
+logging.getLogger().setLevel(logging.INFO)
+logging.getLogger("dspy").setLevel(logging.INFO)
+logging.getLogger("dspy.teleprompt").setLevel(logging.INFO)
+logging.getLogger("dspy.teleprompt.gepa").setLevel(logging.INFO)
 
 # Configure DSPy once at import time
 # to avoid per-request reconfiguration errors
@@ -204,6 +216,17 @@ def optimize() -> Any:
     enable_disk_cache = payload.get("enableDiskCache")
     enable_memory_cache = payload.get("enableMemoryCache")
 
+    # Streaming trace configuration
+    run_id = payload.get("runId")
+    trace_dir = payload.get("traceDir")
+    trace_path: Path | None = None
+    if isinstance(trace_dir, str) and trace_dir.strip():
+        try:
+            trace_path = Path(trace_dir).joinpath("trace.jsonl")
+            trace_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            trace_path = None
+
     # Resolve per-request LMs without reconfiguring global settings
     local_lm = None
     if isinstance(main_model, str) and main_model.strip():
@@ -285,19 +308,125 @@ def optimize() -> Any:
             else None
         ),
     )
-    if local_lm is not None:
-        with dspy.settings.context(lm=local_lm):
+    # Attach a transient log handler to capture GEPA iteration progress
+    handler: logging.Handler | None = None
+    attached_loggers: list[logging.Logger] = []
+    if trace_path is not None:
+        class _TraceHandler(logging.Handler):
+            def __init__(self, file_path: Path):
+                super().__init__(level=logging.INFO)
+                self.file_path = file_path
+                self.iteration: int | None = None
+                self.best_so_far: float | None = None
+                self._re_iter = re.compile(
+                    r"Iteration\s+(\d+):.*?score:\s*([0-9eE+\-.]+)"
+                )
+                self._re_avg = re.compile(
+                    r"Average Metric:\s*([0-9eE+\-.]+)"
+                )
+                self._re_skip = re.compile(
+                    r"New subsample score is not better, skipping"
+                )
+
+            def emit(self, record: logging.LogRecord) -> None:
+                try:
+                    msg = record.getMessage()
+                    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                    obj: dict[str, Any] | None = None
+                    m_iter = self._re_iter.search(msg)
+                    if m_iter:
+                        self.iteration = int(m_iter.group(1))
+                        selected = float(m_iter.group(2))
+                        cond = (
+                            self.best_so_far is None or selected > self.best_so_far
+                        )
+                        if cond:
+                            self.best_so_far = selected
+                        obj = {
+                            "type": "iteration",
+                            "timestamp": now,
+                            "iteration": self.iteration,
+                            "selectedProgramScore": selected,
+                            "bestSoFar": self.best_so_far,
+                        }
+                    else:
+                        m_avg = self._re_avg.search(msg)
+                        if m_avg:
+                            avg = float(m_avg.group(1))
+                            obj = {
+                                "type": "metric",
+                                "timestamp": now,
+                                "iteration": self.iteration,
+                                "averageMetric": avg,
+                                "bestSoFar": self.best_so_far,
+                            }
+                        elif self._re_skip.search(msg):
+                            obj = {
+                                "type": "note",
+                                "timestamp": now,
+                                "iteration": self.iteration,
+                                "note": (
+                                    "New subsample score is not better, "
+                                    "skipping"
+                                ),
+                                "bestSoFar": self.best_so_far,
+                            }
+                    if obj is not None:
+                        with self.file_path.open("a", encoding="utf-8") as f:
+                            f.write(json.dumps(obj) + "\n")
+                except Exception:
+                    # Never raise from logging
+                    pass
+
+        handler = _TraceHandler(trace_path)
+        # Attach to relevant loggers explicitly because some libraries
+        # disable propagation
+        logger_names = [
+            "",  # root
+            "dspy",
+            "dspy.teleprompt",
+            "dspy.teleprompt.gepa",
+            "dspy.teleprompt.gepa.gepa",
+            "dspy.evaluate",
+            "dspy.evaluate.evaluate",
+        ]
+        for name in logger_names:
+            try:
+                lg = logging.getLogger(name)
+                lg.setLevel(logging.INFO)
+                # Ensure records bubble up unless the library overrides it
+                try:
+                    lg.propagate = True  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+                lg.addHandler(handler)
+                attached_loggers.append(lg)
+            except Exception:
+                # Best-effort attach; never fail
+                pass
+
+    try:
+        if local_lm is not None:
+            with dspy.settings.context(lm=local_lm):
+                compiled = gepa.compile(
+                    program,
+                    trainset=trainset,
+                    valset=trainset,
+                )
+        else:
             compiled = gepa.compile(
                 program,
                 trainset=trainset,
                 valset=trainset,
             )
-    else:
-        compiled = gepa.compile(
-            program,
-            trainset=trainset,
-            valset=trainset,
-        )
+    finally:
+        if handler is not None:
+            # Remove from all attached loggers
+            for lg in attached_loggers:
+                try:
+                    lg.removeHandler(handler)
+                except Exception:
+                    pass
 
     # Extract results
     best_prog = getattr(compiled, "detailed_results", None)
@@ -330,6 +459,22 @@ def optimize() -> Any:
         "optimizedProgram": optimized_program,
         "stats": optimized_program.get("stats"),
     }
+
+    # Best-effort write a final event for clients tailing the trace
+    if trace_path is not None:
+        try:
+            final_event = {
+                "type": "final",
+                "runId": run_id,
+                "timestamp": time.strftime(
+                    "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+                ),
+                "bestSoFar": optimized_program["bestScore"],
+            }
+            with trace_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(final_event) + "\n")
+        except Exception:
+            pass
     return jsonify(result)
 
 

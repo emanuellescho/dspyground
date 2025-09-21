@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { OptimizeLiveChart } from "@/components/ui/optimize-live-chart";
 import {
   Select,
   SelectContent,
@@ -15,7 +16,7 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { ChevronLeft, ChevronRight, Info, Plus } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type ToolCallPart = { type: "tool-call"; toolName: string; args?: unknown };
 type ToolResultPart = {
@@ -60,6 +61,39 @@ type OptStats = {
   instructionLength?: number;
   usedSamples?: { total: number };
 };
+
+type TraceEvent =
+  | {
+      type: "hello";
+      runId: string;
+    }
+  | {
+      type: "iteration";
+      timestamp: string;
+      iteration: number;
+      selectedProgramScore?: number;
+      bestSoFar?: number;
+    }
+  | {
+      type: "metric";
+      timestamp: string;
+      iteration: number | null;
+      averageMetric: number;
+      bestSoFar?: number | null;
+    }
+  | {
+      type: "note";
+      timestamp: string;
+      iteration: number | null;
+      note: string;
+      bestSoFar?: number | null;
+    }
+  | {
+      type: "final";
+      runId?: string;
+      timestamp: string;
+      bestSoFar: number;
+    };
 
 function isToolCallPart(part: unknown): part is ToolCallPart {
   const p = part as { type?: unknown; toolName?: unknown } | null;
@@ -113,6 +147,28 @@ export default function Chat() {
   const [, setActiveVersionId] = useState<string | null>(null);
   const [optStats, setOptStats] = useState<OptStats | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+  const [trace, setTrace] = useState<{
+    iterations: Array<{
+      i: number;
+      selected?: number;
+      best?: number;
+      avg?: number;
+      t?: string;
+    }>;
+    finalBest?: number;
+  }>({ iterations: [] });
+  const sseRef = useRef<EventSource | null>(null);
+
+  // Ensure SSE closed on unmount
+  useEffect(() => {
+    return () => {
+      if (sseRef.current) {
+        sseRef.current.close();
+        sseRef.current = null;
+      }
+    };
+  }, []);
 
   // Prompt Versions state
   const [versions, setVersions] = useState<{
@@ -120,6 +176,119 @@ export default function Chat() {
   } | null>(null);
   const [versionIndex, setVersionIndex] = useState(0);
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
+
+  // Helper to open SSE stream for a given runId
+  function openStream(runId: string) {
+    try {
+      if (sseRef.current) {
+        sseRef.current.close();
+        sseRef.current = null;
+      }
+      const es = new EventSource(
+        `/api/optimize/stream?runId=${encodeURIComponent(runId)}`
+      );
+      sseRef.current = es;
+      setTrace({ iterations: [] });
+      es.onmessage = (evt) => {
+        try {
+          const ev = JSON.parse(evt.data) as TraceEvent;
+          if (ev.type === "hello") return;
+          if (ev.type === "iteration") {
+            setTrace((prev) => {
+              const next = [...prev.iterations];
+              const idx = ev.iteration;
+              const existingIndex = next.findIndex((d) => d.i === idx);
+              const point = {
+                i: idx,
+                selected: ev.selectedProgramScore,
+                best:
+                  ev.bestSoFar ?? Math.max(...next.map((x) => x.best || 0), 0),
+                t: ev.timestamp,
+              };
+              if (existingIndex >= 0) {
+                next[existingIndex] = { ...next[existingIndex], ...point };
+              } else {
+                next.push(point);
+              }
+              next.sort((a, b) => a.i - b.i);
+              return { ...prev, iterations: next };
+            });
+          } else if (ev.type === "metric") {
+            setTrace((prev) => {
+              if (ev.iteration == null) return prev;
+              const next = [...prev.iterations];
+              const index = next.findIndex((d) => d.i === ev.iteration);
+              const best =
+                typeof ev.bestSoFar === "number"
+                  ? ev.bestSoFar
+                  : next[index]?.best;
+              if (index >= 0) {
+                next[index] = { ...next[index], avg: ev.averageMetric, best };
+              } else {
+                next.push({
+                  i: ev.iteration,
+                  avg: ev.averageMetric,
+                  best: best ?? 0,
+                  t: ev.timestamp,
+                });
+                next.sort((a, b) => a.i - b.i);
+              }
+              return { ...prev, iterations: next };
+            });
+          } else if (ev.type === "final") {
+            setTrace((prev) => {
+              if (!prev.iterations.length) {
+                return {
+                  iterations: [
+                    {
+                      i: 0,
+                      best: ev.bestSoFar,
+                      selected: ev.bestSoFar,
+                      avg: undefined,
+                    },
+                  ],
+                  finalBest: ev.bestSoFar,
+                };
+              }
+              return { ...prev, finalBest: ev.bestSoFar };
+            });
+            if (sseRef.current) {
+              sseRef.current.close();
+              sseRef.current = null;
+            }
+          }
+        } catch {}
+      };
+      es.onerror = () => {
+        if (sseRef.current) {
+          sseRef.current.close();
+          sseRef.current = null;
+        }
+      };
+    } catch {}
+  }
+
+  // If we know versions and no current run selected, default to latest
+  useEffect(() => {
+    if (
+      !currentRunId &&
+      versions &&
+      Array.isArray(versions.versions) &&
+      versions.versions.length > 0
+    ) {
+      const latest = versions.versions[0]?.id;
+      if (latest) {
+        setCurrentRunId(latest);
+      }
+    }
+  }, [versions, currentRunId]);
+
+  // When a runId is set (from fresh run or from versions), open the stream if not already
+  useEffect(() => {
+    if (currentRunId && !sseRef.current) {
+      openStream(currentRunId);
+    }
+  }, [currentRunId]);
 
   // Optimizer basic settings (UI-exposed)
   type OptimizerSettings = {
@@ -635,6 +804,7 @@ export default function Chat() {
               <TabsTrigger value="prompt">Prompt</TabsTrigger>
               <TabsTrigger value="samples">Samples</TabsTrigger>
               <TabsTrigger value="optimizer">Optimizer</TabsTrigger>
+              <TabsTrigger value="hill">Hill Climb</TabsTrigger>
             </TabsList>
 
             <TabsContent
@@ -899,6 +1069,115 @@ export default function Chat() {
                           body: JSON.stringify({ settings: optimizerSettings }),
                         });
                         if (res.ok) {
+                          const { runId } = (await res.json()) as {
+                            status: string;
+                            runId?: string;
+                          };
+                          if (runId) {
+                            setCurrentRunId(runId);
+                            // start streaming
+                            if (sseRef.current) {
+                              sseRef.current.close();
+                              sseRef.current = null;
+                            }
+                            const es = new EventSource(
+                              `/api/optimize/stream?runId=${encodeURIComponent(runId)}`
+                            );
+                            sseRef.current = es;
+                            setTrace({ iterations: [] });
+                            es.onmessage = (evt) => {
+                              try {
+                                const ev = JSON.parse(evt.data) as TraceEvent;
+                                if (ev.type === "hello") return;
+                                if (ev.type === "iteration") {
+                                  setTrace((prev) => {
+                                    const next = [...prev.iterations];
+                                    const idx = ev.iteration;
+                                    const existingIndex = next.findIndex(
+                                      (d) => d.i === idx
+                                    );
+                                    const point = {
+                                      i: idx,
+                                      selected: ev.selectedProgramScore,
+                                      best:
+                                        ev.bestSoFar ??
+                                        Math.max(
+                                          ...next.map((x) => x.best || 0),
+                                          0
+                                        ),
+                                      t: ev.timestamp,
+                                    };
+                                    if (existingIndex >= 0) {
+                                      next[existingIndex] = {
+                                        ...next[existingIndex],
+                                        ...point,
+                                      };
+                                    } else {
+                                      next.push(point);
+                                    }
+                                    next.sort((a, b) => a.i - b.i);
+                                    return { ...prev, iterations: next };
+                                  });
+                                } else if (ev.type === "metric") {
+                                  setTrace((prev) => {
+                                    if (ev.iteration == null) return prev;
+                                    const next = [...prev.iterations];
+                                    const idx = next.findIndex(
+                                      (d) => d.i === ev.iteration
+                                    );
+                                    const best =
+                                      typeof ev.bestSoFar === "number"
+                                        ? ev.bestSoFar
+                                        : next[idx]?.best;
+                                    if (idx >= 0) {
+                                      next[idx] = {
+                                        ...next[idx],
+                                        avg: ev.averageMetric,
+                                        best,
+                                      };
+                                    } else {
+                                      next.push({
+                                        i: ev.iteration,
+                                        avg: ev.averageMetric,
+                                        best: best ?? 0,
+                                        t: ev.timestamp,
+                                      });
+                                      next.sort((a, b) => a.i - b.i);
+                                    }
+                                    return { ...prev, iterations: next };
+                                  });
+                                } else if (ev.type === "final") {
+                                  setTrace((prev) => {
+                                    // If we never saw iterations, add a single final point at iteration 0
+                                    if (!prev.iterations.length) {
+                                      return {
+                                        iterations: [
+                                          {
+                                            i: 0,
+                                            best: ev.bestSoFar,
+                                            selected: ev.bestSoFar,
+                                            avg: undefined,
+                                          },
+                                        ],
+                                        finalBest: ev.bestSoFar,
+                                      };
+                                    }
+                                    return { ...prev, finalBest: ev.bestSoFar };
+                                  });
+                                  if (sseRef.current) {
+                                    sseRef.current.close();
+                                    sseRef.current = null;
+                                  }
+                                }
+                              } catch {}
+                            };
+                            es.onerror = () => {
+                              if (sseRef.current) {
+                                sseRef.current.close();
+                                sseRef.current = null;
+                              }
+                            };
+                          }
                           const updateStatus = async () => {
                             try {
                               const s = await fetch("/api/optimize", {
@@ -1437,6 +1716,33 @@ export default function Chat() {
                       No optimization run yet.
                     </div>
                   )}
+                </div>
+
+                {/* Moved Live Chart to Hill tab */}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="hill" className="flex-1 overflow-hidden">
+              <div className="border rounded-md p-4 h-full overflow-y-auto">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-medium">
+                    Live Hill Climb{" "}
+                    {currentRunId ? `(run ${currentRunId})` : ""}
+                  </div>
+                  <div className="text-xs text-neutral-500">
+                    Step line = best-so-far, blue = selected, dashed = avg
+                  </div>
+                </div>
+                <div className="h-72 w-full border rounded-md dark:border-neutral-800 bg-white dark:bg-neutral-950">
+                  <OptimizeLiveChart
+                    data={trace.iterations.map((d) => ({
+                      iteration: d.i,
+                      selected: d.selected,
+                      best: d.best,
+                      avg: d.avg,
+                    }))}
+                    finalBest={trace.finalBest}
+                  />
                 </div>
               </div>
             </TabsContent>

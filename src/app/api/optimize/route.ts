@@ -19,6 +19,18 @@ function getStatusPath(): string {
   return path.join(process.cwd(), "data", "opt-status.json");
 }
 
+function getVersionsDir(): string {
+  return path.join(process.cwd(), "data", "versions");
+}
+
+function toRunId(ts: string): string {
+  return ts.replace(/[:]/g, "-").replace(/[.]/g, "-");
+}
+
+function getRunDir(runId: string): string {
+  return path.join(getVersionsDir(), runId);
+}
+
 async function ensureDataDir(): Promise<void> {
   const dir = path.join(process.cwd(), "data");
   try {
@@ -194,26 +206,39 @@ export async function POST(req: Request) {
       clientSettings = body?.settings || null;
     } catch {}
 
+    // Prepare run folder + trace file
+    const startedAtIso = new Date().toISOString();
+    const runId = toRunId(startedAtIso);
+    const runDir = getRunDir(runId);
+    await fs.mkdir(runDir, { recursive: true });
+    const tracePath = path.join(runDir, "trace.jsonl");
+    try {
+      await fs.writeFile(tracePath, "", { encoding: "utf8", flag: "a" });
+    } catch {}
+
     // Mark status as running and kick off background optimization
     await writeStatus({
       status: "running",
-      startedAt: new Date().toISOString(),
+      startedAt: startedAtIso,
+      updatedAt: startedAtIso,
     });
 
     // Fire-and-forget background task
     setImmediate(() => {
-      runOptimization(clientSettings).catch(async (err) => {
-        console.log("❌ Optimization failed:", err);
-        await writeStatus({
-          status: "error",
-          errorMessage: err instanceof Error ? err.message : String(err),
-          updatedAt: new Date().toISOString(),
-        });
-      });
+      runOptimization(clientSettings, { runId, runDir, tracePath }).catch(
+        async (err) => {
+          console.log("❌ Optimization failed:", err);
+          await writeStatus({
+            status: "error",
+            errorMessage: err instanceof Error ? err.message : String(err),
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      );
     });
 
     // Return immediately
-    return new Response(JSON.stringify({ status: "started" }), {
+    return new Response(JSON.stringify({ status: "started", runId }), {
       status: 202,
       headers: { "Content-Type": "application/json" },
     });
@@ -290,7 +315,8 @@ async function runOptimization(
     reflectionModelId?: string;
     enableDiskCache?: boolean;
     enableMemoryCache?: boolean;
-  } | null
+  } | null,
+  runInfo?: { runId: string; runDir: string; tracePath: string }
 ): Promise<void> {
   const examples = await buildExamples();
 
@@ -359,6 +385,9 @@ async function runOptimization(
       reflectionModel: clientSettings?.reflectionModelId,
       enableDiskCache: clientSettings?.enableDiskCache,
       enableMemoryCache: clientSettings?.enableMemoryCache,
+      // Trace streaming config for Python optimizer to write iteration events
+      runId: runInfo?.runId,
+      traceDir: runInfo?.runDir,
     }),
   });
   if (!resp.ok) {
@@ -453,12 +482,16 @@ async function runOptimization(
   console.log("✅ GEPA optimization saved to complete-optimization.json");
 
   try {
-    const versionsDir = path.join(process.cwd(), "data", "versions");
+    const versionsDir = getVersionsDir();
     await fs.mkdir(versionsDir, { recursive: true });
-    const versionId = (completeOptimization.timestamp || "")
-      .replace(/[:]/g, "-")
-      .replace(/[.]/g, "-");
-    const versionPath = path.join(versionsDir, versionId || String(Date.now()));
+    const versionPath = runInfo?.runDir
+      ? runInfo.runDir
+      : path.join(
+          versionsDir,
+          (completeOptimization.timestamp || "")
+            .replace(/[:]/g, "-")
+            .replace(/[.]/g, "-") || String(Date.now())
+        );
     await fs.mkdir(versionPath, { recursive: true });
     await fs.writeFile(path.join(versionPath, "prompt.md"), fullPrompt, "utf8");
     await fs.writeFile(
