@@ -13,14 +13,15 @@ app = Flask(__name__)
 
 # Configure DSPy once at import time
 # to avoid per-request reconfiguration errors
-OPENAI_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_APIKEY")
+API_KEY = os.getenv("AI_GATEWAY_API_KEY") or os.getenv("AI_GATEWAY_API_KEY")
 MAIN_MODEL = os.getenv("GEPA_MODEL", "openai/gpt-4.1-mini")
 REFLECTION_MODEL = os.getenv("GEPA_REFLECTION_MODEL", "openai/gpt-4.1")
 
-if OPENAI_KEY:
-    dspy.configure(lm=dspy.LM(model=MAIN_MODEL, api_key=OPENAI_KEY))
-else:
-    dspy.configure(lm=dspy.LM(model=MAIN_MODEL))
+dspy.configure(lm=dspy.LM(
+    model=MAIN_MODEL,
+    api_key=API_KEY,
+    base_url="https://ai-gateway.vercel.sh/v1"))
+
 
 dspy.configure_cache(
     enable_disk_cache=False,
@@ -29,9 +30,11 @@ dspy.configure_cache(
 
 # Build reflection LM once
 REFLECTION_LM = (
-    dspy.LM(model=REFLECTION_MODEL, api_key=OPENAI_KEY)
-    if OPENAI_KEY
-    else dspy.LM(model=REFLECTION_MODEL)
+    dspy.LM(
+        model=REFLECTION_MODEL,
+        api_key=API_KEY,
+        base_url="https://ai-gateway.vercel.sh/v1",
+    )
 )
 
 
@@ -195,6 +198,41 @@ def optimize() -> Any:
     use_merge = payload.get("useMerge")
     num_threads = payload.get("numThreads")
 
+    # Optional runtime overrides for models and cache
+    main_model = payload.get("mainModel")
+    reflection_model = payload.get("reflectionModel")
+    enable_disk_cache = payload.get("enableDiskCache")
+    enable_memory_cache = payload.get("enableMemoryCache")
+
+    # Reconfigure LM/cache if overrides are provided
+    global MAIN_MODEL, REFLECTION_MODEL, REFLECTION_LM
+    if isinstance(main_model, str) and main_model.strip():
+        MAIN_MODEL = main_model.strip()
+        dspy.configure(lm=dspy.LM(
+            model=MAIN_MODEL,
+            api_key=API_KEY,
+            base_url="https://ai-gateway.vercel.sh/v1"))
+    if isinstance(reflection_model, str) and reflection_model.strip():
+        REFLECTION_MODEL = reflection_model.strip()
+        REFLECTION_LM = dspy.LM(
+            model=REFLECTION_MODEL,
+            api_key=API_KEY,
+            base_url="https://ai-gateway.vercel.sh/v1",
+        )
+    if (enable_disk_cache is not None) or (enable_memory_cache is not None):
+        dspy.configure_cache(
+            enable_disk_cache=(
+                bool(enable_disk_cache)
+                if enable_disk_cache is not None
+                else False
+            ),
+            enable_memory_cache=(
+                bool(enable_memory_cache)
+                if enable_memory_cache is not None
+                else False
+            ),
+        )
+
     # LMs are already configured at import-time; avoid reconfiguration here
 
     trainset: List[dspy.Example] = []
@@ -218,15 +256,27 @@ def optimize() -> Any:
         max_metric_calls=max_metric_calls,
         add_format_failure_as_feedback=True,
         # Map Basic settings if provided
-        auto=auto_mode if auto_mode in (None, "light", "medium", "heavy") else None,
+        auto=(
+            auto_mode if auto_mode in (None, "light", "medium", "heavy") else None
+        ),
         candidate_selection_strategy=(
-            candidate_selection if candidate_selection in (None, "pareto", "current_best") else "pareto"
+            candidate_selection
+            if candidate_selection in (None, "pareto", "current_best")
+            else "pareto"
         ),
         reflection_minibatch_size=(
-            int(reflection_minibatch_size) if isinstance(reflection_minibatch_size, (int, float, str)) and str(reflection_minibatch_size) != "" else 3
+            int(reflection_minibatch_size)
+            if isinstance(reflection_minibatch_size, (int, float, str))
+            and str(reflection_minibatch_size) != ""
+            else 3
         ),
         use_merge=bool(use_merge) if use_merge is not None else True,
-        num_threads=(int(num_threads) if isinstance(num_threads, (int, float, str)) and str(num_threads) != "" else None),
+        num_threads=(
+            int(num_threads)
+            if isinstance(num_threads, (int, float, str))
+            and str(num_threads) != ""
+            else None
+        ),
     )
     compiled = gepa.compile(
         program,

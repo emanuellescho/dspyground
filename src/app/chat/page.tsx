@@ -2,6 +2,13 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useChat } from "@ai-sdk/react";
@@ -121,6 +128,10 @@ export default function Chat() {
     reflectionMinibatchSize: number;
     useMerge: boolean;
     numThreads?: number;
+    mainModelId?: string;
+    reflectionModelId?: string;
+    enableDiskCache: boolean;
+    enableMemoryCache: boolean;
   };
   const [optimizerSettings, setOptimizerSettings] = useState<OptimizerSettings>(
     {
@@ -130,8 +141,21 @@ export default function Chat() {
       reflectionMinibatchSize: 3,
       useMerge: true,
       numThreads: undefined,
+      mainModelId: undefined,
+      reflectionModelId: undefined,
+      enableDiskCache: false,
+      enableMemoryCache: false,
     }
   );
+
+  // Models discovered via Vercel AI Gateway
+  type GatewayModel = {
+    id: string;
+    name: string;
+    description: string | null;
+    modelType: string;
+  };
+  const [textModels, setTextModels] = useState<GatewayModel[]>([]);
 
   // Samples navigation index
   const [sampleIndex, setSampleIndex] = useState(0);
@@ -210,6 +234,23 @@ export default function Chat() {
         const res = await fetch("/api/optimize", { cache: "no-store" });
         const data = await res.json();
         setOptStats(data);
+      } catch {}
+    })();
+    (async () => {
+      try {
+        const res = await fetch("/api/models", { cache: "no-store" });
+        if (res.ok) {
+          const data = (await res.json()) as {
+            textModels?: GatewayModel[];
+            models?: GatewayModel[];
+          };
+          const list = (
+            data.textModels && Array.isArray(data.textModels)
+              ? data.textModels
+              : (data.models || []).filter((m) => m.modelType === "language")
+          ) as GatewayModel[];
+          setTextModels(list);
+        }
       } catch {}
     })();
   }, []);
@@ -321,7 +362,7 @@ export default function Chat() {
         {/* Left: Chat */}
         <div className="flex flex-col gap-4 h-full">
           <div className="flex items-center justify-between">
-            <div className="text-xl font-medium">AI Chat</div>
+            <div className="text-xl font-medium">Agent Chat</div>
             <div className="flex items-center gap-2">
               <Button
                 variant={isTeachingMode ? "default" : "outline"}
@@ -906,6 +947,194 @@ export default function Chat() {
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-xs text-neutral-600">
+                        Main model
+                      </label>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        title="Primary model used during optimization runs. Models discovered via Vercel AI Gateway."
+                      >
+                        <Info className="h-3.5 w-3.5 text-neutral-500" />
+                      </Button>
+                    </div>
+                    <Select
+                      value={optimizerSettings.mainModelId ?? "__default__"}
+                      onValueChange={(value) =>
+                        setOptimizerSettings((s) => ({
+                          ...s,
+                          mainModelId:
+                            value === "__default__" ? undefined : value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Default (env)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__default__">
+                          Default (env)
+                        </SelectItem>
+                        {textModels.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.id}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="mt-1 text-[11px] text-neutral-500">
+                      Choose the base LM; leave empty to use server default.
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-neutral-600">
+                        Reflection model
+                      </label>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        title="Model used for GEPA reflection/feedback."
+                      >
+                        <Info className="h-3.5 w-3.5 text-neutral-500" />
+                      </Button>
+                    </div>
+                    <Select
+                      value={
+                        optimizerSettings.reflectionModelId ?? "__default__"
+                      }
+                      onValueChange={(value) =>
+                        setOptimizerSettings((s) => ({
+                          ...s,
+                          reflectionModelId:
+                            value === "__default__" ? undefined : value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Default (env)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__default__">
+                          Default (env)
+                        </SelectItem>
+                        {textModels.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.id}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="mt-1 text-[11px] text-neutral-500">
+                      Choose the reflection LM; leave empty to use server
+                      default.
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-neutral-600">
+                        Disk cache
+                      </label>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        title="Enable DSPy disk cache during optimization."
+                      >
+                        <Info className="h-3.5 w-3.5 text-neutral-500" />
+                      </Button>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant={
+                          optimizerSettings.enableDiskCache
+                            ? "default"
+                            : "outline"
+                        }
+                        size="sm"
+                        onClick={() =>
+                          setOptimizerSettings((s) => ({
+                            ...s,
+                            enableDiskCache: true,
+                          }))
+                        }
+                      >
+                        On
+                      </Button>
+                      <Button
+                        variant={
+                          !optimizerSettings.enableDiskCache
+                            ? "default"
+                            : "outline"
+                        }
+                        size="sm"
+                        onClick={() =>
+                          setOptimizerSettings((s) => ({
+                            ...s,
+                            enableDiskCache: false,
+                          }))
+                        }
+                      >
+                        Off
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-neutral-600">
+                        Memory cache
+                      </label>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        title="Enable DSPy in-memory cache during optimization."
+                      >
+                        <Info className="h-3.5 w-3.5 text-neutral-500" />
+                      </Button>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant={
+                          optimizerSettings.enableMemoryCache
+                            ? "default"
+                            : "outline"
+                        }
+                        size="sm"
+                        onClick={() =>
+                          setOptimizerSettings((s) => ({
+                            ...s,
+                            enableMemoryCache: true,
+                          }))
+                        }
+                      >
+                        On
+                      </Button>
+                      <Button
+                        variant={
+                          !optimizerSettings.enableMemoryCache
+                            ? "default"
+                            : "outline"
+                        }
+                        size="sm"
+                        onClick={() =>
+                          setOptimizerSettings((s) => ({
+                            ...s,
+                            enableMemoryCache: false,
+                          }))
+                        }
+                      >
+                        Off
+                      </Button>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-neutral-600">
                         Mode (auto)
                       </label>
                       <Button
@@ -1105,7 +1334,7 @@ export default function Chat() {
                 </div>
 
                 <div className="mt-4 text-sm text-neutral-700">
-                  Optimization
+                  Previous Optimization
                 </div>
 
                 <div className="mt-2 text-xs text-neutral-700 bg-neutral-50 border border-neutral-200 rounded p-2">

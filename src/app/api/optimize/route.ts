@@ -184,6 +184,10 @@ export async function POST(req: Request) {
       reflectionMinibatchSize?: number;
       useMerge?: boolean;
       numThreads?: number;
+      mainModelId?: string;
+      reflectionModelId?: string;
+      enableDiskCache?: boolean;
+      enableMemoryCache?: boolean;
     } | null = null;
     try {
       const body = await req.json();
@@ -282,6 +286,10 @@ async function runOptimization(
     reflectionMinibatchSize?: number;
     useMerge?: boolean;
     numThreads?: number;
+    mainModelId?: string;
+    reflectionModelId?: string;
+    enableDiskCache?: boolean;
+    enableMemoryCache?: boolean;
   } | null
 ): Promise<void> {
   const examples = await buildExamples();
@@ -346,6 +354,11 @@ async function runOptimization(
       reflectionMinibatchSize: clientSettings?.reflectionMinibatchSize,
       useMerge: clientSettings?.useMerge,
       numThreads: clientSettings?.numThreads,
+      // New runtime configuration for Python optimizer
+      mainModel: clientSettings?.mainModelId,
+      reflectionModel: clientSettings?.reflectionModelId,
+      enableDiskCache: clientSettings?.enableDiskCache,
+      enableMemoryCache: clientSettings?.enableMemoryCache,
     }),
   });
   if (!resp.ok) {
