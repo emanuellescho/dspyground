@@ -17,7 +17,7 @@ export function OptimizeLiveChart(props: {
   onSelectPointAction?: (p: Point) => void;
   selectedIteration?: number | null;
 }) {
-  const { data, finalBest, onSelectPointAction, selectedIteration } = props;
+  const { data, onSelectPointAction, selectedIteration } = props;
   const [mod, setMod] = useState<unknown>(null);
 
   useEffect(() => {
@@ -59,6 +59,48 @@ export function OptimizeLiveChart(props: {
   const fmt = (value: unknown) =>
     typeof value === "number" ? value.toFixed(3) : String(value ?? "");
 
+  const CustomTooltip = (props: any) => {
+    const { active, payload } = props || {};
+    if (!active || !payload || !Array.isArray(payload) || payload.length === 0)
+      return null;
+    const p = (payload[0]?.payload || {}) as Point;
+    const format = (n: number | undefined) =>
+      typeof n === "number" ? n.toFixed(3) : "-";
+    return (
+      <div className="rounded border bg-white p-2 text-xs shadow-sm dark:bg-neutral-950 dark:border-neutral-800">
+        <div>Rollout: {p.iteration}</div>
+        <div>Point score: {format(p.selected)}</div>
+        <div>Best so far: {format(p.best)}</div>
+      </div>
+    );
+  };
+
+  // Find the most recent iteration where the point's score equals the best-so-far
+  const equalsWithinTolerance = (
+    a: number | undefined,
+    b: number | undefined
+  ) =>
+    typeof a === "number" && typeof b === "number" && Math.abs(a - b) <= 1e-9;
+  const breakthroughPoint: Point | null = (() => {
+    for (let i = data.length - 1; i >= 0; i -= 1) {
+      const d = data[i];
+      if (equalsWithinTolerance(d.selected, d.best)) return d;
+    }
+    return null;
+  })();
+
+  // Dynamic Y-axis upper bound based on max score in data (best only)
+  const yMax = (() => {
+    let maxVal = 0;
+    for (const d of data) {
+      if (typeof d.best === "number") maxVal = Math.max(maxVal, d.best);
+    }
+    if (!isFinite(maxVal) || maxVal <= 0) return 1;
+    return maxVal * 1.05;
+  })();
+  // Round up to ensure visible headroom above best score
+  const yMaxRounded2 = Math.ceil(yMax * 100) / 100;
+
   const ClickDot = (props: any) => {
     const { cx, cy, payload } = props || {};
     if (typeof cx !== "number" || typeof cy !== "number") return null;
@@ -69,7 +111,7 @@ export function OptimizeLiveChart(props: {
       }
     };
     return (
-      <g onClick={handleClick} style={{ cursor: "pointer" }}>
+      <g onClick={handleClick} className="cursor-pointer">
         <circle cx={cx} cy={cy} r={3} fill="#16a34a" />
       </g>
     );
@@ -96,10 +138,17 @@ export function OptimizeLiveChart(props: {
         >
           <Label value="Rollouts" position="bottom" offset={10} />
         </XAxis>
-        <YAxis domain={[0, 1]} tickMargin={8}>
+        <YAxis
+          domain={[0, yMaxRounded2]}
+          tickMargin={8}
+          tickFormatter={(v: number) =>
+            typeof v === "number" ? v.toFixed(2) : String(v)
+          }
+        >
           <Label value="Score" angle={-90} position="left" offset={14} />
         </YAxis>
         <Tooltip
+          content={<CustomTooltip />}
           formatter={fmt as unknown as (...args: unknown[]) => unknown}
         />
         <Line
@@ -125,10 +174,10 @@ export function OptimizeLiveChart(props: {
               ) : null;
             })()
           : null}
-        {typeof finalBest === "number" && data.length > 0 ? (
+        {breakthroughPoint ? (
           <ReferenceDot
-            x={data[data.length - 1].iteration}
-            y={finalBest}
+            x={breakthroughPoint.iteration}
+            y={breakthroughPoint.best}
             r={5}
             fill="#ef4444"
             stroke="none"

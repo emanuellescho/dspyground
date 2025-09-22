@@ -99,6 +99,12 @@ type TraceEvent =
       runId?: string;
       timestamp: string;
       bestSoFar: number;
+    }
+  | {
+      type: "final_prompt";
+      runId?: string;
+      timestamp: string;
+      prompt: string;
     };
 
 function isToolCallPart(part: unknown): part is ToolCallPart {
@@ -177,6 +183,7 @@ export default function Chat() {
       prompt?: string;
     }>;
     finalBest?: number;
+    finalPrompt?: string;
   }>({ iterations: [] });
   const sseRef = useRef<EventSource | null>(null);
 
@@ -196,6 +203,18 @@ export default function Chat() {
   } | null>(null);
   const [versionIndex, setVersionIndex] = useState(0);
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
+
+  // Filtered versions for Prompt tab: exclude the latest because "Current" already shows it
+  const promptTabVersions = useMemo(() => {
+    if (!versions || !Array.isArray(versions.versions))
+      return [] as {
+        id: string;
+        timestamp?: string;
+        bestScore?: number | null;
+      }[];
+    // API returns newest first; drop index 0 so Prompt tab doesn't duplicate Current
+    return versions.versions.slice(1);
+  }, [versions]);
 
   // Helper to open SSE stream for a given runId
   function openStream(runId: string) {
@@ -290,6 +309,8 @@ export default function Chat() {
               sseRef.current.close();
               sseRef.current = null;
             }
+          } else if (ev.type === "final_prompt") {
+            setTrace((prev) => ({ ...prev, finalPrompt: ev.prompt }));
           }
         } catch {}
       };
@@ -345,8 +366,8 @@ export default function Chat() {
       reflectionMinibatchSize: 3,
       useMerge: true,
       numThreads: undefined,
-      mainModelId: undefined,
-      reflectionModelId: undefined,
+      mainModelId: "openai/gpt-4.1-mini",
+      reflectionModelId: "openai/gpt-4.1",
       enableDiskCache: false,
       enableMemoryCache: false,
     }
@@ -874,7 +895,7 @@ export default function Chat() {
                             const id =
                               newIndex === 0
                                 ? null
-                                : versions?.versions[newIndex - 1]?.id || null;
+                                : promptTabVersions[newIndex - 1]?.id || null;
                             setActiveVersionId(id);
                             setIsCurrentPromptShown(!id);
                             const res = await fetch(
@@ -902,13 +923,13 @@ export default function Chat() {
                         aria-label="Next version"
                         onClick={async () => {
                           setVersionIndex((i) => {
-                            const total = 1 + (versions?.versions.length || 0);
+                            const total = 1 + (promptTabVersions.length || 0);
                             const next = Math.min(total - 1, i + 1);
                             return next;
                           });
                           try {
                             setIsLoadingPrompt(true);
-                            const total = 1 + (versions?.versions.length || 0);
+                            const total = 1 + (promptTabVersions.length || 0);
                             const nextIdx = Math.min(
                               total - 1,
                               versionIndex + 1
@@ -916,7 +937,7 @@ export default function Chat() {
                             const id =
                               nextIdx === 0
                                 ? null
-                                : versions?.versions[nextIdx - 1]?.id || null;
+                                : promptTabVersions[nextIdx - 1]?.id || null;
                             setActiveVersionId(id);
                             setIsCurrentPromptShown(!id);
                             const res = await fetch(
@@ -937,7 +958,7 @@ export default function Chat() {
                         disabled={
                           isLoadingVersions ||
                           versionIndex >=
-                            1 + (versions?.versions.length || 0) - 1
+                            1 + (promptTabVersions.length || 0) - 1
                         }
                       >
                         <ChevronRight />
@@ -948,7 +969,7 @@ export default function Chat() {
                     {isLoadingVersions
                       ? "Loading versions…"
                       : (() => {
-                          const total = 1 + (versions?.versions.length || 0);
+                          const total = 1 + (promptTabVersions.length || 0);
                           if (!versions || total === 1) {
                             const localTs = formatLocalTimestamp(
                               optStats?.updatedAt
@@ -966,10 +987,10 @@ export default function Chat() {
                             return `1 of ${total} — ${label}`;
                           }
                           const rawTs =
-                            versions.versions[versionIndex - 1]?.timestamp;
+                            promptTabVersions[versionIndex - 1]?.timestamp;
                           const localTs = formatLocalTimestamp(rawTs);
                           const label =
-                            localTs || versions.versions[versionIndex - 1]?.id;
+                            localTs || promptTabVersions[versionIndex - 1]?.id;
                           return `${versionIndex + 1} of ${total} — ${label}`;
                         })()}
                   </div>
@@ -1248,6 +1269,11 @@ export default function Chat() {
                                     sseRef.current.close();
                                     sseRef.current = null;
                                   }
+                                } else if (ev.type === "final_prompt") {
+                                  setTrace((prev) => ({
+                                    ...prev,
+                                    finalPrompt: ev.prompt,
+                                  }));
                                 }
                               } catch {}
                             };
@@ -1349,22 +1375,18 @@ export default function Chat() {
                       </Button>
                     </div>
                     <Select
-                      value={optimizerSettings.mainModelId ?? "__default__"}
+                      value={optimizerSettings.mainModelId}
                       onValueChange={(value) =>
                         setOptimizerSettings((s) => ({
                           ...s,
-                          mainModelId:
-                            value === "__default__" ? undefined : value,
+                          mainModelId: value,
                         }))
                       }
                     >
                       <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Default (env)" />
+                        <SelectValue placeholder="Select a model" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__default__">
-                          Default (env)
-                        </SelectItem>
                         {textModels.map((m) => (
                           <SelectItem key={m.id} value={m.id}>
                             {m.id}
@@ -1373,7 +1395,7 @@ export default function Chat() {
                       </SelectContent>
                     </Select>
                     <div className="mt-1 text-[11px] text-neutral-500">
-                      Choose the base LM; leave empty to use server default.
+                      Choose the base LM.
                     </div>
                   </div>
 
@@ -1392,24 +1414,18 @@ export default function Chat() {
                       </Button>
                     </div>
                     <Select
-                      value={
-                        optimizerSettings.reflectionModelId ?? "__default__"
-                      }
+                      value={optimizerSettings.reflectionModelId}
                       onValueChange={(value) =>
                         setOptimizerSettings((s) => ({
                           ...s,
-                          reflectionModelId:
-                            value === "__default__" ? undefined : value,
+                          reflectionModelId: value,
                         }))
                       }
                     >
                       <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Default (env)" />
+                        <SelectValue placeholder="Select a model" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__default__">
-                          Default (env)
-                        </SelectItem>
                         {textModels.map((m) => (
                           <SelectItem key={m.id} value={m.id}>
                             {m.id}
@@ -1418,8 +1434,7 @@ export default function Chat() {
                       </SelectContent>
                     </Select>
                     <div className="mt-1 text-[11px] text-neutral-500">
-                      Choose the reflection LM; leave empty to use server
-                      default.
+                      Choose the reflection LM.
                     </div>
                   </div>
 
@@ -1812,47 +1827,51 @@ export default function Chat() {
                     <span className="text-xs text-neutral-500">
                       Optimization History
                     </span>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Previous run"
-                        onClick={() => {
-                          if (!versions || !Array.isArray(versions.versions))
-                            return;
-                          setVersionIndex((i) => Math.max(0, i - 1));
-                          const newIndex = Math.max(0, versionIndex - 1);
-                          const id = versions?.versions[newIndex]?.id;
-                          if (id) setCurrentRunId(id);
-                        }}
-                        disabled={!versions || versionIndex === 0}
-                      >
-                        <ChevronLeft />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Next run"
-                        onClick={() => {
-                          if (!versions || !Array.isArray(versions.versions))
-                            return;
-                          const total = versions.versions.length;
-                          setVersionIndex((i) => Math.min(total - 1, i + 1));
-                          const nextIdx = Math.min(
-                            versions.versions.length - 1,
-                            versionIndex + 1
-                          );
-                          const id = versions?.versions[nextIdx]?.id;
-                          if (id) setCurrentRunId(id);
-                        }}
-                        disabled={
-                          !versions ||
-                          versionIndex >= (versions?.versions.length || 0) - 1
-                        }
-                      >
-                        <ChevronRight />
-                      </Button>
-                    </div>
+                    {versions &&
+                    Array.isArray(versions.versions) &&
+                    versions.versions.length > 0 ? (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Previous run"
+                          onClick={() => {
+                            if (!versions || !Array.isArray(versions.versions))
+                              return;
+                            setVersionIndex((i) => Math.max(0, i - 1));
+                            const newIndex = Math.max(0, versionIndex - 1);
+                            const id = versions?.versions[newIndex]?.id;
+                            if (id) setCurrentRunId(id);
+                          }}
+                          disabled={!versions || versionIndex === 0}
+                        >
+                          <ChevronLeft />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Next run"
+                          onClick={() => {
+                            if (!versions || !Array.isArray(versions.versions))
+                              return;
+                            const total = versions.versions.length;
+                            setVersionIndex((i) => Math.min(total - 1, i + 1));
+                            const nextIdx = Math.min(
+                              versions.versions.length - 1,
+                              versionIndex + 1
+                            );
+                            const id = versions?.versions[nextIdx]?.id;
+                            if (id) setCurrentRunId(id);
+                          }}
+                          disabled={
+                            !versions ||
+                            versionIndex >= (versions?.versions.length || 0) - 1
+                          }
+                        >
+                          <ChevronRight />
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="text-[11px] text-neutral-500">
                     {(() => {
@@ -1877,83 +1896,117 @@ export default function Chat() {
                     })()}
                   </div>
                 </div>
-                {versionIndex === 0 ? (
+                {versions &&
+                Array.isArray(versions.versions) &&
+                versions.versions.length > 0 &&
+                versionIndex === 0 ? (
                   <div className="mb-1">
                     <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5">
                       Latest
                     </span>
                   </div>
                 ) : null}
-                <div className="text-xs text-neutral-500 mb-2">
-                  Step line = best-so-far
-                </div>
-                <div className="h-72 w-full border rounded-md dark:border-neutral-800 bg-white dark:bg-neutral-950">
-                  <OptimizeLiveChart
-                    data={trace.iterations.map((d) => ({
-                      iteration: d.i,
-                      selected: d.selected,
-                      best: d.best,
-                      avg: d.avg,
-                      prompt: d.prompt,
-                    }))}
-                    finalBest={trace.finalBest}
-                    selectedIteration={
-                      (
-                        trace as unknown as {
-                          selected?: { iteration: number };
-                        }
-                      ).selected?.iteration ?? null
-                    }
-                    onSelectPointAction={(p) => {
-                      // store selected iteration to show prompt card below
-                      setTrace((prev) => {
-                        const next: typeof prev & {
-                          selected?: {
-                            iteration: number;
-                            prompt?: string;
-                            best?: number;
-                            selected?: number;
-                            avg?: number;
-                          };
-                        } = { ...prev } as unknown as typeof prev & {
-                          selected?: {
-                            iteration: number;
-                            prompt?: string;
-                            best?: number;
-                            selected?: number;
-                            avg?: number;
-                          };
-                        };
-                        // Use the prompt associated with this iteration if available;
-                        // otherwise fall back to the most recent prior prompt
-                        let effectivePrompt: string | undefined = undefined;
-                        const idx = next.iterations.findIndex(
-                          (d) => d.i === p.iteration
-                        );
-                        if (idx >= 0) {
-                          for (let k = idx; k >= 0; k -= 1) {
-                            const pr = next.iterations[k]?.prompt;
-                            if (pr && pr.trim()) {
-                              effectivePrompt = pr;
-                              break;
+                {(() => {
+                  const hasAnyHistory = !!(
+                    versions &&
+                    Array.isArray(versions.versions) &&
+                    versions.versions.length > 0
+                  );
+                  const hasActiveRun =
+                    !!currentRunId ||
+                    (Array.isArray(trace.iterations) &&
+                      trace.iterations.length > 0) ||
+                    optStats?.status === "running";
+                  if (hasAnyHistory || hasActiveRun) {
+                    return (
+                      <>
+                        <div className="text-xs text-neutral-500 mb-2">
+                          Step line = best-so-far
+                        </div>
+                        <div className="h-72 w-full border rounded-md dark:border-neutral-800 bg-white dark:bg-neutral-950">
+                          <OptimizeLiveChart
+                            data={trace.iterations.map((d) => ({
+                              iteration: d.i,
+                              selected: d.selected,
+                              best: d.best,
+                              avg: d.avg,
+                              prompt: d.prompt,
+                            }))}
+                            finalBest={trace.finalBest}
+                            selectedIteration={
+                              (
+                                trace as unknown as {
+                                  selected?: { iteration: number };
+                                }
+                              ).selected?.iteration ?? null
                             }
-                          }
-                        }
-                        if (!effectivePrompt && typeof p.prompt === "string") {
-                          effectivePrompt = p.prompt;
-                        }
-                        next.selected = {
-                          iteration: p.iteration,
-                          prompt: effectivePrompt,
-                          best: p.best,
-                          selected: p.selected,
-                          avg: p.avg,
-                        };
-                        return next as unknown as typeof prev;
-                      });
-                    }}
-                  />
-                </div>
+                            onSelectPointAction={(p) => {
+                              setTrace((prev) => {
+                                const next: typeof prev & {
+                                  selected?: {
+                                    iteration: number;
+                                    prompt?: string;
+                                    best?: number;
+                                    selected?: number;
+                                    avg?: number;
+                                  };
+                                } = { ...prev } as unknown as typeof prev & {
+                                  selected?: {
+                                    iteration: number;
+                                    prompt?: string;
+                                    best?: number;
+                                    selected?: number;
+                                    avg?: number;
+                                  };
+                                };
+                                let effectivePrompt: string | undefined =
+                                  undefined;
+                                // Prefer final prompt if present (ensures we show the actual final prompt)
+                                const fp = (
+                                  next as unknown as { finalPrompt?: string }
+                                ).finalPrompt;
+                                if (typeof fp === "string" && fp.trim()) {
+                                  effectivePrompt = fp;
+                                }
+                                const idx = next.iterations.findIndex(
+                                  (d) => d.i === p.iteration
+                                );
+                                if (idx >= 0) {
+                                  for (let k = idx; k >= 0; k -= 1) {
+                                    const pr = next.iterations[k]?.prompt;
+                                    if (pr && pr.trim()) {
+                                      effectivePrompt = pr;
+                                      break;
+                                    }
+                                  }
+                                }
+                                if (
+                                  !effectivePrompt &&
+                                  typeof p.prompt === "string"
+                                ) {
+                                  effectivePrompt = p.prompt;
+                                }
+                                next.selected = {
+                                  iteration: p.iteration,
+                                  prompt: effectivePrompt,
+                                  best: p.best,
+                                  selected: p.selected,
+                                  avg: p.avg,
+                                };
+                                return next as unknown as typeof prev;
+                              });
+                            }}
+                          />
+                        </div>
+                      </>
+                    );
+                  }
+                  return (
+                    <div className="h-72 w-full border rounded-md dark:border-neutral-800 bg-white dark:bg-neutral-950 flex items-center justify-center text-neutral-500">
+                      No history yet. Run an optimization to see progress.
+                    </div>
+                  );
+                })()}
                 {(() => {
                   const s = (
                     trace as unknown as {

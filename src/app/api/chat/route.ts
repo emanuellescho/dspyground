@@ -1,8 +1,4 @@
-import {
-  humanAgentWaitTime,
-  lookupInternalKnowledgeBase,
-  routeToHumanAgent,
-} from "@/lib/tools";
+import * as availableTools from "@/lib/tools";
 import {
   convertToModelMessages,
   stepCountIs,
@@ -121,10 +117,10 @@ export async function POST(req: Request) {
         }>
       )
     : teachingSystemPrompt
-    ? teachingSystemPrompt
-    : baseSystemPrompt
-    ? baseSystemPrompt + (optimizedConfig.fewShotExamples || "")
-    : optimizedConfig.fewShotExamples;
+      ? teachingSystemPrompt
+      : baseSystemPrompt
+        ? baseSystemPrompt + (optimizedConfig.fewShotExamples || "")
+        : optimizedConfig.fewShotExamples;
 
   console.log(`🎯 Using optimized temperature: ${optimizedConfig.temperature}`);
   console.log(
@@ -133,11 +129,7 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: "openai/gpt-4.1-mini",
-    tools: {
-      humanAgentWaitTime,
-      routeToHumanAgent,
-      lookupInternalKnowledgeBase,
-    },
+    tools: availableTools,
     system: systemPrompt,
     messages: convertToModelMessages(messages),
     temperature: optimizedConfig.temperature, // Use MiPRO optimized temperature

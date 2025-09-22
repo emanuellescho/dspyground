@@ -506,6 +506,23 @@ async function runOptimization(
     console.log("⚠️ Failed to save versioned optimization run:", e);
   }
 
+  // Append the final combined prompt to the trace so trace.jsonl reflects the true final prompt
+  try {
+    if (runInfo?.tracePath) {
+      const finalPromptEvent = {
+        type: "final_prompt",
+        runId: runInfo.runId,
+        timestamp: new Date().toISOString(),
+        prompt: fullPrompt,
+      };
+      await fs.writeFile(
+        runInfo.tracePath,
+        JSON.stringify(finalPromptEvent) + "\n",
+        { encoding: "utf8", flag: "a" }
+      );
+    }
+  } catch {}
+
   await writeStatus({
     status: "completed",
     updatedAt: new Date().toISOString(),

@@ -37,7 +37,7 @@ export const lookupInternalKnowledgeBase = tool({
   }),
   execute: async ({ query }: { query: string }) => {
     try {
-      const kbPath = path.join(process.cwd(), "data", "kb.md");
+      const kbPath = path.join(process.cwd(), "src/lib/kb.md");
       const kb = await fs.readFile(kbPath, "utf-8");
 
       const prompt = [
