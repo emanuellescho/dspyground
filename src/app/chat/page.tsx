@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { toast } from "@/components/ui/sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
@@ -1345,7 +1346,26 @@ export default function Chat() {
                             setTimeout(poll, delay);
                           };
                           poll();
+                        } else {
+                          try {
+                            const data = (await res.json()) as {
+                              error?: string;
+                            };
+                            if (data?.error) {
+                              toast.error(data.error);
+                            } else {
+                              toast.error("Failed to start optimization");
+                            }
+                          } catch {
+                            toast.error("Failed to start optimization");
+                          }
                         }
+                      } catch (e) {
+                        const message =
+                          e instanceof Error ? e.message : String(e);
+                        toast.error(
+                          message || "Unexpected error starting optimization"
+                        );
                       } finally {
                         setIsOptimizing(false);
                       }

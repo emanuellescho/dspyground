@@ -206,6 +206,15 @@ export async function POST(req: Request) {
       clientSettings = body?.settings || null;
     } catch {}
 
+    // Pre-validate that we have at least one training example before starting a run
+    const preflightExamples = await buildExamples();
+    if (preflightExamples.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "Need at least one chat session to optimize" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     // Prepare run folder + trace file
     const startedAtIso = new Date().toISOString();
     const runId = toRunId(startedAtIso);
