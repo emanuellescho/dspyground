@@ -1,141 +1,53 @@
-# AISDK Prompt Optimizer
+# DSPyground
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Open Source](https://badges.frapsoft.com/os/v1/open-source.svg?v=103)](https://opensource.org/)
-
-Transform your AI interactions with intelligent prompt optimization. Teach your AI, collect ideal samples, and generate optimized prompts using the powerful AISDK Prompt Optimizer.
-
-**Fully Open Source** - Built by the team that created [Langtrace AI](https://langtrace.ai) and [Zest](https://heyzest.ai)
-
-## What is GEPA?
-
-**GEPA** (Genetic-Pareto) is a reflective optimizer that adaptively evolves textual components (such as prompts) of AI systems. Unlike traditional optimization methods that only use scalar scores, GEPA leverages rich textual feedback to guide the optimization process, allowing it to propose high-performing prompts in very few rollouts.
-
-Key features of GEPA:
-- **Reflective Prompt Mutation**: Uses LLMs to reflect on execution traces and propose new instructions
-- **Rich Textual Feedback**: Leverages any textual feedback beyond just scalar rewards
-- **Pareto-based Selection**: Maintains a frontier of candidates that excel in different scenarios
-
-Learn more: [GEPA Documentation](https://dspy.ai/api/optimizers/GEPA/)
-
-## How It Works
-
-1. **Start Conversation**: Begin chatting with the AI and teach it desired behaviors through examples
-2. **Mark Examples**: Save ideal conversation samples that represent perfect responses
-3. **Run Optimization**: Let AISDK Prompt Optimizer analyze patterns and generate optimized prompts
-4. **Deploy Results**: Use the optimized prompts in your applications
-
-## Features
-
-- **Teach Your AI**: Guide your AI through interactive conversations and demonstrate the ideal responses you want to achieve
-- **Collect Ideal Samples**: Gather high-quality conversation examples that represent perfect AI behavior for your use case
-- **AISDK Prompt Optimizer**: Leverage advanced optimization algorithms to automatically generate and refine prompt candidates
+Optimize ~~Engineer~~ your Prompts for better agent trajectories.
 
 ## Quick Start
 
 ### Prerequisites
-- Node.js (18+ recommended)
-- `uv` package manager for Python
-- OpenAI API key
-- AI Gateway API key
+- Node.js 18+
+- `uv` (Python package/runtime manager)
+- OpenAI API key and AI Gateway API key
 
-### Environment Setup
-
-Before running the application, you need to set up your environment variables:
-
-1. Copy the example environment file:
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Edit the `.env` file and add your API keys:
-   ```bash
-   # Required: OpenAI API key for AI model access
-   OPENAI_API_KEY=your_actual_openai_api_key_here
-   
-   # Required: AI Gateway API key for prompt optimization
-   AI_GATEWAY_API_KEY=your_actual_ai_gateway_api_key_here
-   ```
-
-**Important**: Never commit your actual API keys to version control. The `.env` file is already included in `.gitignore`.
-
-### Installation & Setup
-
+### Setup & Run
 ```bash
-# Clone the repository
-git clone https://github.com/Scale3-Labs/aisdk-prompt-optimizer
-cd aisdk-prompt-optimizer
-
 # Install dependencies
 npm install
 
-# Start both services (recommended)
+# Start the web app and the Python optimizer together
 npm run dev:all
 ```
 
-### Alternative: Start Services Separately
+The web app runs at `http://localhost:3000`. The optimizer service runs locally and is started for you.
 
-```bash
-# Terminal 1: Start the Python optimizer
-cd python_optimizer
-uv run app.py
+## Teach Mode: How to Use
+0. Start with a base prompt by updating `data/prompt.md`.
+1. Enter Teach Mode and provide a scenario (what the AI should do).
+2. Chat, then collect ideal samples by selecting your question and the AI's answer.
+3. Collect as many samples as you like to cover different cases.
+4. Go to the Optimize tab and click Optimize.
+5. Watch live optimization in the History tab.
+6. The final prompt is saved to `data/prompt.md` and shown in the Prompt tab.
+7. Optimization versions are saved in `data/versions` and listed in the History tab.
+8. Try the Chat again using the updated prompt from the latest run.
 
-# Terminal 2: Start the web app
-npm run dev
-```
+### Custom Tools
+- Edit `src/lib/tools.ts` to add or replace tools. It contains placeholder tools; anything you define/export there (using `tool(...)`) is automatically available to the agent in chat and optimization—no extra wiring needed.
 
-The web app will be available at `http://localhost:3000` and the Python optimizer at `http://localhost:8000`. Both services need to be running for the optimization features to work.
+## DSPy and GEPA
 
-## Available Scripts
+- **DSPy** provides the optimization framework used by this project.
+- **GEPA** (Genetic-Pareto) is a reflective optimizer that evolves prompts using textual feedback and Pareto-based selection.
+- A lightweight Python service exposes the optimizer; the web app calls it via `/api/optimize`.
+- Artifacts written by optimization:
+  - `data/prompt.md` — current optimized prompt
+  - `data/complete-optimization.json` — full optimization results and metadata
+  - `data/versions/` — versioned optimization runs and histories
 
-- `npm run dev` - Start the Next.js development server
-- `npm run dev:py` - Start the Python optimizer server
-- `npm run dev:all` - Start both services concurrently
-
-## Architecture
-
-### Python Optimizer (dspy.GEPA)
-
-The repository includes a lightweight Flask server exposing the `dspy.GEPA` optimizer, managed with `uv`. The Next.js `/api/optimize` route calls this server and writes optimization artifacts to:
-- `data/prompt.md` - Generated optimized prompts
-- `data/complete-optimization.json` - Complete optimization results and metadata
-
-### Web Application
-
-Built with Next.js and shadcn/ui components, the web interface provides:
-- Interactive chat interface for teaching the AI
-- Sample collection and management
-- Optimization trigger and results visualization
-- Modern, responsive UI with dark/light mode support
-
-## Technology Stack
-
-- **Frontend**: Next.js, TypeScript, Tailwind CSS, shadcn/ui
-- **Backend**: Python Flask server with dspy.GEPA optimizer
-- **Package Management**: npm (frontend), uv (Python)
-
-## Learn More
-
-- [DSPy Documentation](https://dspy.ai/)
-- [GEPA Optimizer API](https://dspy.ai/api/optimizers/GEPA/)
-- [Next.js Documentation](https://nextjs.org/docs)
-
-## Deployment
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-For the Python optimizer, you'll need to deploy it to a Python-compatible hosting service and update the API endpoints accordingly.
-
-Check out the [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-## License
-
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
-
-## Contributing
-
-We welcome contributions! This is a fully open source project. Please feel free to submit issues and pull requests.
+Learn more: [DSPy Documentation](https://dspy.ai/) · [GEPA Optimizer](https://dspy.ai/api/optimizers/GEPA/) · [GEPA Tweet](https://x.com/LakshyAAAgrawal/status/1949867953421496715) · [GEPA Paper](https://arxiv.org/pdf/2507.19457)
 
 ## About
+Built by the team that built [Langtrace AI](https://langtrace.ai) and [Zest AI](https://heyzest.ai).
 
-Built with ❤️ by the team that created [Langtrace AI](https://langtrace.ai) and [Zest](https://heyzest.ai).
+## License
+Apache-2.0. See [`LICENSE`](LICENSE).
