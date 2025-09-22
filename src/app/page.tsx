@@ -8,15 +8,15 @@ export default function Home() {
         {/* Hero Section */}
         <div className="text-center mb-16">
           <div className="inline-flex items-center px-3 py-1 rounded-full bg-muted text-muted-foreground text-sm mb-6">
-            Fully Open Source • Powered by AISDK Prompt Optimizer
+            Fully Open Source • Powered by DSPy, GEPA, and AISDK
           </div>
           <h1 className="text-5xl font-bold text-foreground mb-6">
-            AISDK Prompt Optimizer
+            DSPyground
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
-            Transform your AI interactions with intelligent prompt optimization.
-            Teach your AI, collect ideal samples, and generate optimized prompts
-            using the powerful AISDK Prompt Optimizer.
+            Optimize your prompts for better agent trajectories. Teach your AI,
+            collect ideal samples, and generate optimized prompts using the
+            powerful DSPy, GEPA, and AISDK.
           </p>
           <div className="flex justify-center">
             <Link href="/chat">
@@ -96,7 +96,7 @@ export default function Home() {
               </svg>
             </div>
             <h3 className="text-xl font-semibold mb-2 text-foreground">
-              AISDK Prompt Optimizer
+              DSPy, GEPA, and AISDK
             </h3>
             <p className="text-muted-foreground">
               Leverage advanced optimization algorithms to automatically
@@ -142,7 +142,7 @@ export default function Home() {
                 Run Optimization
               </h4>
               <p className="text-sm text-muted-foreground">
-                Let AISDK Prompt Optimizer analyze patterns and generate
+                Let DSPy, GEPA, and AISDK analyze patterns and generate
                 optimized prompts
               </p>
             </div>
