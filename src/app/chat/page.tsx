@@ -586,7 +586,7 @@ export default function Chat() {
     <div className="font-sans w-full max-w-none p-6 min-h-[100svh] h-[100svh] overflow-hidden">
       <div className="grid grid-cols-2 gap-6 h-full">
         {/* Left: Chat */}
-        <div className="flex flex-col gap-4 h-full">
+        <div className="flex flex-col gap-4 h-full min-h-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="text-xl font-medium">Agent Chat</div>
@@ -870,11 +870,8 @@ export default function Chat() {
               <TabsTrigger value="hill">History</TabsTrigger>
             </TabsList>
 
-            <TabsContent
-              value="prompt"
-              className="flex-1 min-h-0 overflow-hidden"
-            >
-              <div className="border rounded-md p-4 h-full flex flex-col overflow-hidden">
+            <TabsContent value="prompt" className="flex-1 min-h-0">
+              <div className="border rounded-md p-4 h-full flex flex-col min-h-0">
                 <div className="flex items-center justify-between mb-2">
                   <div className="font-medium">Prompt</div>
                 </div>
@@ -1017,11 +1014,8 @@ export default function Chat() {
               </div>
             </TabsContent>
 
-            <TabsContent
-              value="samples"
-              className="flex-1 min-h-0 overflow-hidden"
-            >
-              <div className="border rounded-md p-4 h-full flex flex-col overflow-hidden">
+            <TabsContent value="samples" className="flex-1 min-h-0">
+              <div className="border rounded-md p-4 h-full flex flex-col min-h-0">
                 <div className="flex items-center justify-between mb-2">
                   <div className="font-medium">Samples</div>
                 </div>
@@ -1129,7 +1123,7 @@ export default function Chat() {
               </div>
             </TabsContent>
 
-            <TabsContent value="optimizer" className="flex-1 overflow-hidden">
+            <TabsContent value="optimizer" className="flex-1 min-h-0">
               <div className="border rounded-md p-4 h-full overflow-y-auto">
                 <div className="flex items-center justify-between mb-2">
                   <div className="font-medium">Optimizer Settings</div>
